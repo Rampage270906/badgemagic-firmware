@@ -232,13 +232,12 @@ void game_start(uint16_t *fb)
     memset(game_fb, 0, LED_COLS * sizeof(uint16_t));
     init_game();
     draw_pixel(food.x, food.y, 1);
-
+#if HW_KEY_COUNT == 4
+    auxbtn_onOnePress(KEY3, on_turn_left);
+    auxbtn_onOnePress(KEY4, on_turn_right);
+#else
     btn_onOnePress(KEY1, on_turn_left);
     btn_onOnePress(KEY2, on_turn_right);
-    btn_onLongPress(KEY1, NULL);
-#if HW_KEY_COUNT == 4
-    auxbtn_onOnePress(KEY3, NULL);
-    auxbtn_onOnePress(KEY4, NULL);
 #endif
 
     tmos_start_task(game_taskid, GAME_TICK, MS_TO_TMOS(speed_ms));
