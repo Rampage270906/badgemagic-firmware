@@ -235,6 +235,8 @@ void game_start(uint16_t *fb)
 #if HW_KEY_COUNT == 4
     auxbtn_onOnePress(KEY3, on_turn_left);
     auxbtn_onOnePress(KEY4, on_turn_right);
+    btn_onOnePress(KEY1, NULL);
+    btn_onOnePress(KEY2, NULL);
 #else
     btn_onOnePress(KEY1, on_turn_left);
     btn_onOnePress(KEY2, on_turn_right);
