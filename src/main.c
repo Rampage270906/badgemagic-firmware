@@ -658,8 +658,15 @@ static void enter_clock_submenu()
 
     btn_onOnePress(KEY1, clock_submenu_nav);
     btn_onOnePress(KEY2, clock_submenu_nav);
+#if HW_KEY_COUNT == 4
+	btn_onLongPress(KEY1, NULL);
+    btn_onLongPress(KEY2, NULL);
+    auxbtn_onOnePress(KEY3, clock_submenu_select);
+    auxbtn_onOnePress(KEY4, return_to_menu);
+#else
     btn_onLongPress(KEY1, clock_submenu_select);
     btn_onLongPress(KEY2, return_to_menu);
+#endif
 
     disp_clock_submenu();
 }
