@@ -3,7 +3,7 @@
  * Author             : WCH
  * Version            : V1.0
  * Date               : 2018/12/10
- * Description        : OTA��������ͨѶ�ӿ�
+ * Description        : OTA firmware update communication interface
  *********************************************************************************
  * Copyright (c) 2021 Nanjing Qinheng Microelectronics Co., Ltd.
  * Attention: This software (modified or not) and binary are used for 
@@ -32,13 +32,17 @@
 /*********************************************************************
  * GLOBAL VARIABLES
  */
-// Simple GATT Profile Service UUID: 0xFFF0
+// Simple GATT Profile Service UUID: 0xFEE0
 const uint8_t OTAProfileServUUID[ATT_BT_UUID_SIZE] = {
     LO_UINT16(OTAPROFILE_SERV_UUID), HI_UINT16(OTAPROFILE_SERV_UUID)};
 
-// Characteristic 1 UUID: 0xFFF1
+// Characteristic 1 UUID: 0xFEE1 (OTA command channel)
 const uint8_t OTAProfilechar1UUID[ATT_BT_UUID_SIZE] = {
     LO_UINT16(OTAPROFILE_CHAR_UUID), HI_UINT16(OTAPROFILE_CHAR_UUID)};
+
+// Characteristic 2 UUID: 0xFEE2 (slot info, read-only)
+const uint8_t OTAProfileChar2UUID[ATT_BT_UUID_SIZE] = {
+    LO_UINT16(OTAPROFILE_SLOT_CHAR_UUID), HI_UINT16(OTAPROFILE_SLOT_CHAR_UUID)};
 
 /*********************************************************************
  * EXTERNAL VARIABLES
@@ -61,16 +65,26 @@ static OTAProfileCBs_t *OTAProfile_AppCBs = NULL;
 // Simple Profile Service attribute
 static const gattAttrType_t OTAProfileService = {ATT_BT_UUID_SIZE, OTAProfileServUUID};
 
-// Simple Profile Characteristic 1 Properties
+// Characteristic 1 Properties (OTA command channel)
 static uint8_t OTAProfileCharProps = GATT_PROP_READ | GATT_PROP_WRITE | GATT_PROP_WRITE_NO_RSP;
 
 // Characteristic 1 Value
 static uint8_t OTAProfileChar = 0;
 
-// Simple Profile Characteristic 1 User Description
+// Characteristic 1 User Description
 static uint8_t OTAProfileCharUserDesp[12] = "OTA Channel";
 
-// write and read buffer
+// Characteristic 2 Properties (slot info, read-only — no write, no staging needed)
+static uint8_t OTAProfileSlotCharProps = GATT_PROP_READ;
+
+// Characteristic 2 Value — placeholder; the read callback returns THIS_IMAGE_FLAG
+// directly rather than reading this byte, so its stored content is unused.
+static uint8_t OTAProfileSlotChar = 0;
+
+// Characteristic 2 User Description
+static uint8_t OTAProfileSlotCharUserDesp[10] = "Slot Info";
+
+// write and read buffer (OTA command channel only)
 static uint8_t OTAProfileReadLen;
 static uint8_t OTAProfileReadBuf[IAP_LEN];
 static uint8_t OTAProfileWriteLen;
@@ -80,7 +94,7 @@ static uint8_t OTAProfileWriteBuf[IAP_LEN];
  * Profile Attributes - Table
  */
 
-static gattAttribute_t OTAProfileAttrTbl[4] = {
+static gattAttribute_t OTAProfileAttrTbl[7] = {
     // Simple Profile Service
     {
         {ATT_BT_UUID_SIZE, primaryServiceUUID}, /* type */
@@ -89,26 +103,47 @@ static gattAttribute_t OTAProfileAttrTbl[4] = {
         (uint8_t *)&OTAProfileService           /* pValue */
     },
 
-    // Characteristic Declaration
+    // Characteristic 1 Declaration (OTA command channel)
     {
         {ATT_BT_UUID_SIZE, characterUUID},
         GATT_PERMIT_READ,
         0,
         &OTAProfileCharProps},
 
-    // Characteristic Value
+    // Characteristic 1 Value
     {
         {ATT_BT_UUID_SIZE, OTAProfilechar1UUID},
         GATT_PERMIT_READ | GATT_PERMIT_WRITE,
         0,
         &OTAProfileChar},
 
-    // Characteristic User Description
+    // Characteristic 1 User Description
     {
         {ATT_BT_UUID_SIZE, charUserDescUUID},
         GATT_PERMIT_READ,
         0,
         OTAProfileCharUserDesp},
+
+    // Characteristic 2 Declaration (slot info, read-only)
+    {
+        {ATT_BT_UUID_SIZE, characterUUID},
+        GATT_PERMIT_READ,
+        0,
+        &OTAProfileSlotCharProps},
+
+    // Characteristic 2 Value (slot info)
+    {
+        {ATT_BT_UUID_SIZE, OTAProfileChar2UUID},
+        GATT_PERMIT_READ,
+        0,
+        &OTAProfileSlotChar},
+
+    // Characteristic 2 User Description
+    {
+        {ATT_BT_UUID_SIZE, charUserDescUUID},
+        GATT_PERMIT_READ,
+        0,
+        OTAProfileSlotCharUserDesp},
 };
 
 /*********************************************************************
@@ -136,11 +171,11 @@ gattServiceCBs_t OTAProfileCBs = {
 /*********************************************************************
  * @fn      OTAProfile_AddService
  *
- * @brief   OTA Profile��ʼ��
+ * @brief   Initialize the OTA Profile
  *
- * @param   services    - ���������
+ * @param   services    - services to add
  *
- * @return  ��ʼ����״̬
+ * @return  init status
  */
 bStatus_t OTAProfile_AddService(uint32_t services)
 {
@@ -161,11 +196,11 @@ bStatus_t OTAProfile_AddService(uint32_t services)
 /*********************************************************************
  * @fn      OTAProfile_RegisterAppCBs
  *
- * @brief   OTA Profile��д�ص�����ע��
+ * @brief   Register OTA Profile read/write callbacks
  *
- * @param   appCallbacks    - �����ṹ��ָ��
+ * @param   appCallbacks    - pointer to callback struct
  *
- * @return  ����ִ��״̬
+ * @return  execution status
  */
 bStatus_t OTAProfile_RegisterAppCBs(OTAProfileCBs_t *appCallbacks)
 {
@@ -222,9 +257,17 @@ static bStatus_t OTAProfile_ReadAttrCB(uint16_t connHandle, gattAttribute_t *pAt
                 }
                 break;
             }
+            case OTAPROFILE_SLOT_CHAR_UUID:
+            {
+                // Always-current, no write/staging required — directly reflects
+                // which slot this running firmware was linked for.
+                pValue[0] = THIS_IMAGE_FLAG;
+                *pLen = 1;
+                break;
+            }
             default:
             {
-                // Should never get here! (characteristics 3 and 4 do not have read permissions)
+                // Should never get here! (declaration/description attrs are read-only structural entries)
                 *pLen = 0;
                 status = ATT_ERR_ATTR_NOT_FOUND;
                 break;
@@ -258,7 +301,6 @@ static bStatus_t OTAProfile_WriteAttrCB(uint16_t connHandle, gattAttribute_t *pA
                                         uint8_t *pValue, uint16_t len, uint16_t offset, uint8_t method)
 {
     bStatus_t status = SUCCESS;
-    //uint8_t notifyApp = 0xFF;
 
     if(pAttr->type.len == ATT_BT_UUID_SIZE)
     {
@@ -284,7 +326,8 @@ static bStatus_t OTAProfile_WriteAttrCB(uint16_t connHandle, gattAttribute_t *pA
             }
 
             default:
-                // Should never get here! (characteristics 2 and 4 do not have write permissions)
+                // Should never get here! (slot-info characteristic and structural
+                // attrs do not have write permissions)
                 status = ATT_ERR_ATTR_NOT_FOUND;
                 break;
         }
@@ -307,19 +350,19 @@ static bStatus_t OTAProfile_WriteAttrCB(uint16_t connHandle, gattAttribute_t *pA
 /*********************************************************************
  * @fn      OTAProfile_SendData
  *
- * @brief   OTA Profileͨ����������
+ * @brief   Stage data to be returned on the next read of the OTA command channel
  *
- * @param   paramID     - OTAͨ��ѡ��
- * @param   p_data      - ����ָ��
- * @param   send_len    - �������ݳ���
+ * @param   paramID     - OTA channel selector
+ * @param   p_data      - data pointer
+ * @param   send_len    - data length
  *
- * @return  ����ִ��״̬
+ * @return  execution status
  */
 bStatus_t OTAProfile_SendData(unsigned char paramID, unsigned char *p_data, unsigned char send_len)
 {
     bStatus_t status = SUCCESS;
 
-    /* ���ݳ��ȳ�����Χ */
+    /* Data length out of range */
     if(send_len > 20)
         return 0xfe;
 
