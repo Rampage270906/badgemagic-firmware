@@ -23,6 +23,8 @@ HexBinStudio) to combine three `.hex` files into one flashable image:
 | 2 | `badgemagic-ch582-slotA.hex` (from this repo's CI, matching hardware/key variant) | `1000` | Initial APP firmware — badges ship running Slot A |
 | 3 | `BackupUpgrade_IAP.hex` | `6D000` | Direct-xip bootloader |
 
+<img width="1345" height="650" alt="image" src="https://github.com/user-attachments/assets/a735c28c-c82c-4c3f-bc2a-caa16032caf4" />
+
 Leave Slot B (`0x37000`–`0x6D000`) blank/erased — it stays empty until the
 badge receives its first OTA update.
 
