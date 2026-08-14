@@ -117,8 +117,8 @@ static const char *menu_labels[] = {
 #define MENU_IDX_BLE       1
 #define MENU_IDX_CLOCK     2
 #define MENU_IDX_GAMES     3
-#define MENU_IDX_SECURITY  4
-//#define MENU_IDX_OFF       4
+//#define MENU_IDX_SECURITY  4
+#define MENU_IDX_OFF       4
 
 #define ANI_BASE_SPEED_T      (200000) // uS
 #define ANI_MARQUE_SPEED_T    (100000) // uS
