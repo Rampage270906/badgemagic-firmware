@@ -728,6 +728,13 @@ static void toggle_clock()
 }
 */
 
+static void disp_ble_off()
+{
+    memset(fb, 0, sizeof(fb));
+    fb_puts_small("BLUETOOTH", 9, 4, 0);
+    fb_puts_small("OFF", 3, 4, 6);
+}
+
 void handle_after_rx()
 {
     if (badge_cfg.reset_rx) {
@@ -737,7 +744,11 @@ void handle_after_rx()
         tmos_stop_task(common_taskid, STOPWATCH_TICK);
         sw_state = SW_STOPPED;
         clock_active = 0;
-        mode_setup_normal();
+        stop_all_animation();
+        disp_ble_off();
+        DelayMs(1500);          // hold the "Bluetooth Off" message briefly
+        ble_disable_advertise();
+        return_to_menu();
     }
 }
 
