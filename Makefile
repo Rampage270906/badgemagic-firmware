@@ -11,6 +11,8 @@ TARGET = badgemagic-ch582
 # DEBUG = 1
 # Uncomment below to build for USB-C version
 # USBC_VERSION = 1
+# Set to 2 to build for 2-key hardware (default: 4)
+# KEY_COUNT = 2
 # optimization for size
 OPT = -Os
 
@@ -23,6 +25,11 @@ VERSION_ABBR = $(shell git describe --abbrev=0 --tags 2>/dev/null || echo "unkno
 ifeq ($(VERSION_ABBR),unknown)
 	$(warning Unable to determine version from git tags)
 endif
+
+#######################################
+# key count variant
+#######################################
+KEY_COUNT ?= 4
 
 #######################################
 # paths
@@ -84,9 +91,15 @@ src/animation.c \
 src/font.c \
 src/font3x5.c \
 src/power.c \
-src/auxbtn.c \
-src/util.c\
+src/util.c \
 src/game.c \
+src/flappy.c \
+src/pong.c \
+
+# Aux buttons (KEY3/KEY4) only exist on 4-key hardware
+ifeq ($(KEY_COUNT), 4)
+C_SOURCES += src/auxbtn.c
+endif
 
 
 # ASM sources
@@ -141,9 +154,14 @@ ifeq ($(DEBUG), 1)
 CFLAGS += -g -gdwarf-2 -DDEBUG=$(DEBUG)
 endif
 
-ifeq ($(USBC_VERSION), 1)
-CFLAGS += -DUSBC_VERSION=$(USBC_VERSION)
+ifeq ($(HARDWARE_REV1), 1)
+CFLAGS += -DHARDWARE_REV1=$(HARDWARE_REV1)
 endif
+ifeq ($(HARDWARE_REV3), 1)
+CFLAGS += -DHARDWARE_REV3=$(HARDWARE_REV3)
+endif
+
+CFLAGS += -DHW_KEY_COUNT=$(KEY_COUNT)
 
 CFLAGS += -DVERSION='"$(VERSION)"' -DVERSION_ABBR='"$(VERSION_ABBR)"'
 CFLAGS += -DCLK_OSC32K=2

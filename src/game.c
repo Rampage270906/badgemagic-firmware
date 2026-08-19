@@ -5,11 +5,12 @@
 #include "font3x5.h"           // for font3x5
 #include <string.h>         // for memset
 #include "button.h"
-#include "auxbtn.h"
 #include "CH58x_common.h"
 #include "game.h"
 #include "data.h"
-
+#if HW_KEY_COUNT == 4
+#include "auxbtn.h"
+#endif
 
 #define SNAKE_MAX_LEN       100
 #define SPEED_INITIAL_MS    300
@@ -231,11 +232,15 @@ void game_start(uint16_t *fb)
     memset(game_fb, 0, LED_COLS * sizeof(uint16_t));
     init_game();
     draw_pixel(food.x, food.y, 1);
-
-    btn_onOnePress(KEY1, NULL);
-    btn_onOnePress(KEY2, NULL);
+#if HW_KEY_COUNT == 4
     auxbtn_onOnePress(KEY3, on_turn_left);
     auxbtn_onOnePress(KEY4, on_turn_right);
+    btn_onOnePress(KEY1, NULL);
+    btn_onOnePress(KEY2, NULL);
+#else
+    btn_onOnePress(KEY1, on_turn_left);
+    btn_onOnePress(KEY2, on_turn_right);
+#endif
 
     tmos_start_task(game_taskid, GAME_TICK, MS_TO_TMOS(speed_ms));
 }
