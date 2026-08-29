@@ -37,6 +37,7 @@ unsigned char CurrImageFlag = 0xff;
 
 // Whether ota_confirm_boot() has run this session, to avoid duplicate writes
 static uint8_t ota_confirmed = 0;
+static uint8_t ota_display_active = 0;
 
 static void ReadImageFlag(void)
 {
@@ -464,6 +465,33 @@ static void disp_auth_code(uint16_t code)
 	buf[3] = '0' + (code)        % 10;
 	buf[4] = '\0';
 	fb_puts(buf, 4, 8, 2);   // centered on 44-col display, row 2
+}
+
+void disp_ota_progress(uint8_t percent)
+{
+	if (!ota_display_active) {
+		stop_all_animation();
+		ota_display_active = 1;
+	}
+	if (percent > 100) percent = 100;
+
+	memset((void *)fb, 0, sizeof(fb));
+	fb_puts_small("UPDATING", 8, 6, 0);
+
+	char buf[5];
+	int len = 0;
+	if (percent >= 100) { buf[len++]='1'; buf[len++]='0'; buf[len++]='0'; }
+	else if (percent >= 10) { buf[len++]='0'+(percent/10); buf[len++]='0'+(percent%10); }
+	else { buf[len++]='0'+percent; }
+	buf[len++] = '%'; buf[len] = '\0';
+	fb_puts_small(buf, len, (LED_COLS - len * 4) / 2, 6);
+}
+
+void disp_ota_cancel(void)
+{
+	if (!ota_display_active) return;
+	ota_display_active = 0;
+	return_to_menu();
 }
 
 static void disp_clock()

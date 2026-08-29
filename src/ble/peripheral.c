@@ -15,7 +15,41 @@ void OTA_IAPWriteData(unsigned char index, unsigned char *p_data, unsigned char 
 void OTA_IAP_SendCMDDealSta(uint8_t deal_status);
 void Rec_OTA_IAP_DataDeal(void);
 
+// display hooks, defined in src/main.c
+extern void disp_ota_progress(uint8_t percent);
+extern void disp_ota_cancel(void);
+
 static uint8 taskid = INVALID_TASK_ID;
+
+// OTA progress tracking — set on CMD_IAP_ERASE, advanced on each successful
+// CMD_IAP_PROM write. Percent is throttled so we redraw the display only
+// when the shown number actually changes, not on every ~16-byte BLE packet.
+static uint32_t ota_total_bytes = 0;
+static uint32_t ota_written_bytes = 0;
+static uint8_t ota_last_pct = 0xFF;
+
+static void ota_progress_reset(uint32_t total_bytes)
+{
+    ota_total_bytes = total_bytes;
+    ota_written_bytes = 0;
+    ota_last_pct = 0xFF;
+    disp_ota_progress(0);
+}
+
+static void ota_progress_advance(uint32_t written_len)
+{
+    if (!ota_total_bytes)
+        return;
+
+    ota_written_bytes += written_len;
+    uint32_t pct = (ota_written_bytes * 100) / ota_total_bytes;
+    if (pct > 99)
+        pct = 99; // reserve 100% for CMD_IAP_END success
+    if (pct != ota_last_pct) {
+        ota_last_pct = pct;
+        disp_ota_progress(pct);
+    }
+}
 
 typedef struct
 {
@@ -116,6 +150,10 @@ static void link_onTerminated(gapRoleEvent_t *pe)
 	legacy_reset_auth(); //clears authorised flag on disconnect
 	enable_advertising(TRUE);
 
+	// If the phone dropped mid-OTA, don't leave "UPDATING" stuck on screen.
+	// No-op if no update was in progress.
+	disp_ota_cancel();
+
 	if(event->connectionHandle == conn_list.connHandle) {
 		conn_list.connHandle = GAP_CONNHANDLE_INIT;
 		conn_list.connInterval = 0;
@@ -202,6 +240,7 @@ static uint16 peripheral_task(uint8 task_id, uint16 events)
     uint8_t status;
     status = FLASH_ROM_ERASE(EraseAdd + EraseBlockCnt * FLASH_BLOCK_SIZE, FLASH_BLOCK_SIZE);
     if(status != SUCCESS) {
+        disp_ota_cancel();
         OTA_IAP_SendCMDDealSta(status);
         return (events ^ OTA_FLASH_ERASE_EVT);
     }
@@ -374,6 +413,11 @@ void Rec_OTA_IAP_DataDeal(void)
                 cdc_tx_poll((uint8_t *)buf, len, 100);
             }
 
+            if (status == SUCCESS)
+                ota_progress_advance(OpParaDataLen);
+            else
+                disp_ota_cancel();
+
             OTA_IAP_SendCMDDealSta(status);
             break;
         }
@@ -401,10 +445,15 @@ void Rec_OTA_IAP_DataDeal(void)
 
             if(EraseAdd < OTA_TARGET_START_ADD || (EraseAdd + (EraseBlockNum - 1) * FLASH_BLOCK_SIZE) > IMAGE_IAP_START_ADD)
             {
+                disp_ota_cancel();
                 OTA_IAP_SendCMDDealSta(0xFF);
             }
             else
             {
+                // First command of a real update — start the "UPDATING" screen
+                // and size the progress bar off the erase range, since that's
+                // the closest thing we have to the incoming image size.
+                ota_progress_reset(EraseBlockNum * FLASH_BLOCK_SIZE);
                 tmos_set_event(taskid, OTA_FLASH_ERASE_EVT);
             }
             break;
@@ -438,9 +487,12 @@ void Rec_OTA_IAP_DataDeal(void)
 			{
 				len = snprintf(buf, sizeof(buf), "iap_end: IAP blank! aborting\r\n");
 				cdc_tx_poll((uint8_t *)buf, len, 100);
+				disp_ota_cancel();
 				OTA_IAP_SendCMDDealSta(0xFE);
 				break;
 			}
+
+			disp_ota_progress(100);
 
 			len = snprintf(buf, sizeof(buf), "iap_end: switching flag\r\n");
 			cdc_tx_poll((uint8_t *)buf, len, 100);
